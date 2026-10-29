@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="light" data-font="kai" data-focus="on" data-numbers="on" data-layout="paragraph" data-indent="on">
+<html lang="zh-CN" data-theme="light" data-palette="qinglan" data-font="kai" data-focus="on" data-numbers="on" data-layout="paragraph" data-indent="on">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -20,7 +20,13 @@
       var raw = localStorage.getItem('inkline:v1');
       var s = raw ? (JSON.parse(raw).settings || {}) : {};
       var t = s.theme || 'auto';
-      var dark = t === 'dark' || (t === 'auto' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      if (t === 'light') t = 'qinglan';
+      else if (t === 'dark') t = 'moye';
+      var darkIds = { moye: 1, songyan: 1 };
+      var sysDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      if (t === 'auto') t = sysDark ? 'moye' : 'qinglan';
+      var dark = !!darkIds[t];
+      document.documentElement.setAttribute('data-palette', t);
       document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
       document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
     } catch (e) {}
@@ -114,10 +120,35 @@
 
     <div class="sheet__group">
       <p class="sheet__label">主题</p>
-      <div class="segmented" data-segmented="theme" role="radiogroup" aria-label="主题">
-        <label><input type="radio" name="theme" value="auto" /><span>自动</span></label>
-        <label><input type="radio" name="theme" value="light" /><span>浅色</span></label>
-        <label><input type="radio" name="theme" value="dark" /><span>深色</span></label>
+      <div class="theme-grid" role="radiogroup" aria-label="主题">
+      <button type="button" class="theme-card" data-theme-id="auto" role="radio" aria-checked="false">
+        <span class="theme-card__swatches"><i style="background:#f1f4ee"></i><i style="background:#3f7d4e"></i><i style="background:#12160f"></i></span>
+        <span class="theme-card__name">跟随系统</span>
+      </button>
+      <button type="button" class="theme-card" data-theme-id="qinglan" role="radio" aria-checked="false">
+        <span class="theme-card__swatches"><i style="background:#f1f4ee"></i><i style="background:#3f7d4e"></i><i style="background:#e2b23c"></i></span>
+        <span class="theme-card__name">青岚</span>
+      </button>
+      <button type="button" class="theme-card" data-theme-id="moye" role="radio" aria-checked="false">
+        <span class="theme-card__swatches"><i style="background:#12160f"></i><i style="background:#7fc38b"></i><i style="background:#e8c25a"></i></span>
+        <span class="theme-card__name">墨夜</span>
+      </button>
+      <button type="button" class="theme-card" data-theme-id="suzhi" role="radio" aria-checked="false">
+        <span class="theme-card__swatches"><i style="background:#f4efe2"></i><i style="background:#7a5a3a"></i><i style="background:#c08c2e"></i></span>
+        <span class="theme-card__name">素纸</span>
+      </button>
+      <button type="button" class="theme-card" data-theme-id="haiyan" role="radio" aria-checked="false">
+        <span class="theme-card__swatches"><i style="background:#eef3f4"></i><i style="background:#2f7b8c"></i><i style="background:#cf9a34"></i></span>
+        <span class="theme-card__name">海盐</span>
+      </button>
+      <button type="button" class="theme-card" data-theme-id="nuanri" role="radio" aria-checked="false">
+        <span class="theme-card__swatches"><i style="background:#fbf1e4"></i><i style="background:#bd5836"></i><i style="background:#d99a3d"></i></span>
+        <span class="theme-card__name">暖阳</span>
+      </button>
+      <button type="button" class="theme-card" data-theme-id="songyan" role="radio" aria-checked="false">
+        <span class="theme-card__swatches"><i style="background:#12171a"></i><i style="background:#6fae9f"></i><i style="background:#d4b45f"></i></span>
+        <span class="theme-card__name">松烟</span>
+      </button>
       </div>
     </div>
 

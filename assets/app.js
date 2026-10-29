@@ -14,7 +14,15 @@
     layout: 'paragraph',
     indent: true
   };
-  var THEMES = ['auto', 'light', 'dark'];
+  var PALETTES = [
+    { id: 'qinglan', name: '青岚', dark: false, meta: '#f1f4ee' },
+    { id: 'moye', name: '墨夜', dark: true, meta: '#12160f' },
+    { id: 'suzhi', name: '素纸', dark: false, meta: '#f4efe2' },
+    { id: 'haiyan', name: '海盐', dark: false, meta: '#eef3f4' },
+    { id: 'nuanri', name: '暖阳', dark: false, meta: '#fbf1e4' },
+    { id: 'songyan', name: '松烟', dark: true, meta: '#12171a' }
+  ];
+  var THEME_IDS = ['auto'].concat(PALETTES.map(function (p) { return p.id; }));
   var FONTS = ['kai', 'song', 'hei'];
   var LAYOUTS = ['paragraph', 'sentences'];
 
@@ -219,6 +227,9 @@
       }
     }
     if (LAYOUTS.indexOf(state.settings.layout) === -1) state.settings.layout = 'paragraph';
+    if (state.settings.theme === 'light') state.settings.theme = 'qinglan';
+    else if (state.settings.theme === 'dark') state.settings.theme = 'moye';
+    if (THEME_IDS.indexOf(state.settings.theme) === -1) state.settings.theme = 'auto';
     state.updatedAt = Number(data.updatedAt) || 0;
     state.completedAt = Number(data.completedAt) || 0;
     applyDocument(state.text);
@@ -244,23 +255,43 @@
 
   /* ---------- 主题与显示设置 ---------- */
 
-  function resolvedTheme() {
+  function findPalette(id) {
+    for (var i = 0; i < PALETTES.length; i++) {
+      if (PALETTES[i].id === id) return PALETTES[i];
+    }
+    return PALETTES[0];
+  }
+
+  function resolvePalette() {
     var t = state.settings.theme;
-    if (t === 'dark' || t === 'light') return t;
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    if (t === 'auto') {
+      var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      return findPalette(dark ? 'moye' : 'qinglan');
+    }
+    return findPalette(t);
   }
 
   function applyTheme() {
-    var theme = resolvedTheme();
+    var palette = resolvePalette();
     var root = document.documentElement;
-    root.setAttribute('data-theme', theme);
-    root.style.colorScheme = theme;
+    root.setAttribute('data-palette', palette.id);
+    root.setAttribute('data-theme', palette.dark ? 'dark' : 'light');
+    root.style.colorScheme = palette.dark ? 'dark' : 'light';
     var meta = document.getElementById('meta-theme');
-    if (meta) meta.setAttribute('content', theme === 'dark' ? '#12160f' : '#f1f4ee');
-    var glyph = theme === 'dark' ? '☀' : '☾';
-    var label = theme === 'dark' ? '切换到浅色主题' : '切换到深色主题';
-    if (els.themeToggle) { els.themeToggle.textContent = glyph; els.themeToggle.setAttribute('aria-label', label); }
-    if (els.themeToggle2) { els.themeToggle2.textContent = glyph; els.themeToggle2.setAttribute('aria-label', label); }
+    if (meta) meta.setAttribute('content', palette.meta);
+    var glyph = palette.dark ? '☀' : '☾';
+    var auto = state.settings.theme === 'auto';
+    var title = auto ? '主题：跟随系统（' + palette.name + '）' : '主题：' + palette.name;
+    if (els.themeToggle) {
+      els.themeToggle.textContent = glyph;
+      els.themeToggle.setAttribute('aria-label', '切换主题');
+      els.themeToggle.setAttribute('title', title);
+    }
+    if (els.themeToggle2) {
+      els.themeToggle2.textContent = glyph;
+      els.themeToggle2.setAttribute('aria-label', '切换主题');
+      els.themeToggle2.setAttribute('title', title);
+    }
   }
 
   function applySettings() {
@@ -293,12 +324,15 @@
     });
     if (els.sizeOut) els.sizeOut.textContent = String(state.settings.size);
     if (els.leadingOut) els.leadingOut.textContent = Number(state.settings.leading).toFixed(1);
+    $$('.theme-card').forEach(function (cardEl) {
+      cardEl.setAttribute('aria-checked', cardEl.getAttribute('data-theme-id') === state.settings.theme ? 'true' : 'false');
+    });
   }
 
   function setSetting(key, value) {
     if (key === 'size') value = clamp(Math.round(value), 15, 30);
     if (key === 'leading') value = Math.round(clamp(value, 1.4, 2.6) * 10) / 10;
-    if (key === 'theme' && THEMES.indexOf(value) === -1) return;
+    if (key === 'theme' && THEME_IDS.indexOf(value) === -1) return;
     if (key === 'font' && FONTS.indexOf(value) === -1) return;
     if (key === 'layout' && LAYOUTS.indexOf(value) === -1) return;
     state.settings[key] = value;
@@ -311,11 +345,13 @@
   }
 
   function cycleTheme() {
-    var next = resolvedTheme() === 'dark' ? 'light' : 'dark';
+    var index = THEME_IDS.indexOf(state.settings.theme);
+    var next = THEME_IDS[(index + 1) % THEME_IDS.length];
     state.settings.theme = next;
     applySettings();
     save();
-    toast(next === 'dark' ? '已切换为深色' : '已切换为浅色');
+    var palette = resolvePalette();
+    toast('主题：' + (next === 'auto' ? '跟随系统（' + palette.name + '）' : palette.name));
   }
 
   /* ---------- 提示 ---------- */
@@ -775,6 +811,15 @@
         });
       });
     });
+
+    $$('.theme-card').forEach(function (cardEl) {
+      cardEl.addEventListener('click', function () {
+        var id = cardEl.getAttribute('data-theme-id');
+        setSetting('theme', id);
+        var palette = resolvePalette();
+        toast(id === 'auto' ? '主题：跟随系统（' + palette.name + '）' : '主题：' + palette.name);
+      });
+    });
   }
 
   function bindKeyboard() {
@@ -783,7 +828,9 @@
       if (document.body.getAttribute('data-view') !== 'reader') return;
       var target = e.target;
       var tag = target && target.tagName ? target.tagName.toLowerCase() : '';
-      if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || tag === 'a' || (target && target.isContentEditable)) return;
+      var isTextButton = !!(target && target.classList && (target.classList.contains('sentence') || target.classList.contains('line')));
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'a' || (target && target.isContentEditable)) return;
+      if (tag === 'button' && !isTextButton) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowRight') {
         e.preventDefault();
