@@ -231,7 +231,10 @@ html, body { margin: 0; padding: 0; }
 [data-font="song"] { --content-font: var(--latin-serif), var(--song); }
 [data-font="hei"] { --content-font: var(--latin-sans), var(--hei); }
 
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
 body {
+  overflow-x: clip;
   min-height: 100vh;
   min-height: 100dvh;
   background: var(--bg);
@@ -646,6 +649,7 @@ body[data-view="reader"] #view-reader { display: block; }
 }
 .sentence:hover { background: var(--accent-soft); }
 .sentence:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.sentence { overflow-wrap: break-word; word-break: normal; }
 .sentence.is-past { color: var(--muted); }
 .sentence.is-current {
   background: var(--select-bg);
