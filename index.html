@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light" data-font="kai" data-focus="on" data-numbers="on" data-hide-done="off" data-strike="off">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>抄写台 · 逐行抄写，不写串</title>
+<meta name="description" content="把要抄的内容粘贴进来，逐行标记抄写进度：当前行高亮、已抄的行变淡，抄到哪行一目了然。手机、电脑都能用，断网也能抄。" />
+<meta id="meta-theme" name="theme-color" content="#f6f1e8" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="抄写台" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png" />
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="stylesheet" href="assets/app.css" />
+<script>
+  (function () {
+    try {
+      var raw = localStorage.getItem('chaoxie:v1');
+      var s = raw ? (JSON.parse(raw).settings || {}) : {};
+      var t = s.theme || 'auto';
+      var dark = t === 'dark' || (t === 'auto' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body data-view="editor">
+<a class="skip-link" href="#source-text">跳到输入框</a>
+
+<main id="view-editor" class="view">
+  <header class="masthead">
+    <div class="brand">
+      <span class="brand__seal" aria-hidden="true">抄</span>
+      <div class="brand__text">
+        <h1>抄写台</h1>
+        <p>逐行标记，抄到哪行心里有数</p>
+      </div>
+    </div>
+    <button id="theme-toggle" class="icon-btn" type="button" aria-label="切换明暗主题" title="切换明暗主题">◐</button>
+  </header>
+
+  <section class="card">
+    <div class="card__head">
+      <label class="field-label" for="source-text">要抄写的内容</label>
+      <span id="source-stats" class="stats">0 行 · 0 字</span>
+    </div>
+    <textarea id="source-text" class="source" spellcheck="false" placeholder="把要抄写的文字粘贴到这里，每段一行。&#10;&#10;例如：&#10;立身以立学为先，立学以读书为本。&#10;读书之法，在循序而渐进，熟读而精思。"></textarea>
+    <div class="editor-tools">
+      <button id="import-btn" class="link-btn" type="button">导入 txt / md 文件</button>
+      <button id="sample-btn" class="link-btn" type="button">填入示例</button>
+      <button id="clear-btn" class="link-btn" type="button">清空</button>
+      <input id="file-input" type="file" accept=".txt,.md,.markdown,text/plain,text/markdown" hidden />
+    </div>
+  </section>
+
+  <section class="card card--quiet">
+    <div class="option-row">
+      <span class="option-label" id="mode-label">分行方式</span>
+      <div class="segmented segmented--sm" data-segmented="mode" role="radiogroup" aria-labelledby="mode-label">
+        <label><input type="radio" name="mode" value="line" /><span>按行</span></label>
+        <label><input type="radio" name="mode" value="sentence" /><span>按句</span></label>
+      </div>
+    </div>
+    <p class="hint">按行：每个换行算一行；按句：自动在 。！？ 处切开，适合大段文字。</p>
+  </section>
+
+  <div id="resume-card" class="resume" hidden>
+    <div class="resume__body">
+      <p class="resume__title">上次没抄完</p>
+      <p id="resume-meta" class="resume__meta"></p>
+    </div>
+    <button id="resume-btn" class="btn btn--ghost btn--sm" type="button">继续</button>
+  </div>
+
+  <button id="start-btn" class="btn btn--primary btn--block" type="button" disabled>开始抄写</button>
+  <p class="footnote">内容只保存在这台设备的浏览器里，不会上传 · <a href="https://github.com/EQmarks/chaoxie" target="_blank" rel="noopener">GitHub</a></p>
+</main>
+
+<main id="view-reader" class="view">
+  <header class="reader-bar">
+    <div class="reader-bar__inner">
+      <button id="back-btn" class="icon-btn" type="button" aria-label="返回编辑">←</button>
+      <div class="reader-bar__main">
+        <p id="reader-title" class="reader-title">抄写中</p>
+        <div id="progress-bar" class="progress" role="progressbar" aria-label="抄写进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div id="progress-fill" class="progress__fill"></div>
+        </div>
+      </div>
+      <span id="progress-text" class="progress-text" aria-live="polite">0 / 0</span>
+      <button id="theme-toggle-2" class="icon-btn" type="button" aria-label="切换明暗主题" title="切换明暗主题">◐</button>
+    </div>
+  </header>
+
+  <section id="done-banner" class="banner" hidden>
+    <p id="banner-title" class="banner__title">全部抄完了</p>
+    <p id="banner-meta" class="banner__meta"></p>
+    <div class="banner__actions">
+      <button id="restart-btn" class="btn btn--ghost btn--sm" type="button">重新抄一遍</button>
+      <button id="banner-edit-btn" class="btn btn--ghost btn--sm" type="button">修改内容</button>
+    </div>
+  </section>
+
+  <p class="reader-note">点一下某一行，标记「已抄」或改回未抄。</p>
+  <p class="keyhints" aria-hidden="true">空格 完成本行 · ⌫ 撤销 · E 编辑 · + / − 字号</p>
+  <ol id="line-list" class="lines" aria-label="抄写内容"></ol>
+</main>
+
+<div class="dock" id="dock">
+  <button id="undo-btn" class="dock__btn" type="button" disabled>↩ 撤销</button>
+  <button id="complete-btn" class="dock__btn dock__btn--primary" type="button">完成本行</button>
+  <button id="settings-btn" class="dock__btn" type="button" aria-label="显示设置">Aa</button>
+</div>
+
+<dialog id="settings-dialog" class="sheet" aria-labelledby="sheet-title">
+  <form method="dialog" class="sheet__inner">
+    <div class="sheet__head">
+      <h2 id="sheet-title">显示设置</h2>
+      <button class="icon-btn" type="submit" aria-label="关闭设置">✕</button>
+    </div>
+
+    <div class="sheet__group">
+      <p class="sheet__label">主题</p>
+      <div class="segmented" data-segmented="theme" role="radiogroup" aria-label="主题">
+        <label><input type="radio" name="theme" value="auto" /><span>自动</span></label>
+        <label><input type="radio" name="theme" value="light" /><span>浅色</span></label>
+        <label><input type="radio" name="theme" value="dark" /><span>深色</span></label>
+      </div>
+    </div>
+
+    <div class="sheet__group">
+      <p class="sheet__label">字体</p>
+      <div class="segmented" data-segmented="font" role="radiogroup" aria-label="字体">
+        <label><input type="radio" name="font" value="kai" /><span>楷体</span></label>
+        <label><input type="radio" name="font" value="song" /><span>宋体</span></label>
+        <label><input type="radio" name="font" value="hei" /><span>黑体</span></label>
+      </div>
+    </div>
+
+    <div class="sheet__group">
+      <div class="range-row"><label for="size-range">字号</label><output id="size-out" for="size-range">19</output></div>
+      <input id="size-range" class="range" type="range" min="15" max="30" step="1" data-setting="size" />
+    </div>
+
+    <div class="sheet__group">
+      <div class="range-row"><label for="leading-range">行距</label><output id="leading-out" for="leading-range">1.9</output></div>
+      <input id="leading-range" class="range" type="range" min="1.4" max="2.6" step="0.1" data-setting="leading" />
+    </div>
+
+    <div class="sheet__group sheet__group--list">
+      <label class="switch-row"><span>聚焦当前行（其他行变淡）</span><input type="checkbox" data-setting="focus" /><i class="switch" aria-hidden="true"></i></label>
+      <label class="switch-row"><span>显示行号</span><input type="checkbox" data-setting="numbers" /><i class="switch" aria-hidden="true"></i></label>
+      <label class="switch-row"><span>隐藏已抄的行</span><input type="checkbox" data-setting="hideDone" /><i class="switch" aria-hidden="true"></i></label>
+      <label class="switch-row"><span>已抄的行加删除线</span><input type="checkbox" data-setting="strike" /><i class="switch" aria-hidden="true"></i></label>
+      <label class="switch-row"><span>完成后自动滚动到下一行</span><input type="checkbox" data-setting="autoScroll" /><i class="switch" aria-hidden="true"></i></label>
+    </div>
+
+    <div class="sheet__group sheet__group--actions">
+      <button id="reset-progress-btn" class="btn btn--ghost btn--sm" type="button">清空抄写进度</button>
+      <button id="edit-from-sheet-btn" class="btn btn--ghost btn--sm" type="button">修改内容</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<noscript><p class="noscript">抄写台需要启用 JavaScript 才能使用。</p></noscript>
+
+<script src="assets/app.js" defer></script>
+</body>
+</html>
