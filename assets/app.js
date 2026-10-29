@@ -12,7 +12,7 @@
     numbers: true,
     autoScroll: true,
     layout: 'paragraph',
-    indent: true
+    indent: false
   };
   var PALETTES = [
     { id: 'qinglan', name: '青岚', dark: false, meta: '#f1f4ee' },
@@ -227,6 +227,7 @@
       }
     }
     if (LAYOUTS.indexOf(state.settings.layout) === -1) state.settings.layout = 'paragraph';
+    if (!data.indentMigrated) state.settings.indent = false;
     if (state.settings.theme === 'light') state.settings.theme = 'qinglan';
     else if (state.settings.theme === 'dark') state.settings.theme = 'moye';
     if (THEME_IDS.indexOf(state.settings.theme) === -1) state.settings.theme = 'auto';
@@ -243,7 +244,8 @@
       cursor: state.cursor,
       settings: state.settings,
       updatedAt: state.updatedAt,
-      completedAt: state.completedAt
+      completedAt: state.completedAt,
+      indentMigrated: true
     });
     clearTimeout(saveTimer);
     function flush() {

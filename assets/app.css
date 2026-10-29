@@ -913,8 +913,13 @@ body[data-view="editor"] .dock { display: none; }
   .brand__text h1 { font-size: 19px; }
   .card { padding: 15px 15px 12px; border-radius: 18px; }
   .source { min-height: 180px; font-size: 16.5px; }
-  .lines { padding-left: 10px; padding-right: 10px; }
-  .paras { padding-left: 12px; padding-right: 12px; }
+  .lines { width: 100%; max-width: 100%; padding-left: 12px; padding-right: 12px; }
+  .paras { width: 100%; max-width: 100%; padding-left: 14px; padding-right: 14px; }
+  .para { width: 100%; max-width: 100%; }
+  .sentence { white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+  .line__text { overflow-wrap: anywhere; }
+  .reader-bar, .reader-bar__inner, .reader-bar__main { min-width: 0; max-width: 100%; }
+  #view-reader { width: 100%; max-width: 100%; overflow-x: hidden; }
   .line { padding: 12px 10px; gap: 10px; }
   .line__no { min-width: 1.5em; }
   .dock { border-radius: 18px; padding: 7px; }
