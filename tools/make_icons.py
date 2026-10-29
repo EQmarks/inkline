@@ -7,9 +7,11 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "icons"
 OUT.mkdir(exist_ok=True)
 
-TOP = (0xD4, 0x55, 0x3B)
-BOTTOM = (0xA9, 0x35, 0x22)
-SCALE = 2  # 先画大图再缩小，边缘更干净
+TOP = (0x4F, 0x91, 0x5F)     # 绿
+BOTTOM = (0x2F, 0x6A, 0x3E)
+YELLOW = (0xF5, 0xCF, 0x5B)  # 当前句黄
+WHITE = (0xF7, 0xFB, 0xF5)
+SCALE = 2
 
 
 def rounded_mask(size, radius, full_bleed):
@@ -32,8 +34,8 @@ def gradient(size):
     return grad
 
 
-def bar(draw, x, y, w, h, alpha):
-    draw.rounded_rectangle([x, y, x + w, y + h], radius=h / 2, fill=(255, 255, 255, alpha))
+def bar(draw, x, y, w, h, color):
+    draw.rounded_rectangle([x, y, x + w, y + h], radius=h / 2, fill=color)
 
 
 def render(size, full_bleed=False, content_scale=1.0):
@@ -45,13 +47,16 @@ def render(size, full_bleed=False, content_scale=1.0):
     draw = ImageDraw.Draw(layer)
     u = s / 512.0 * content_scale
     off = (s - 512 * u) / 2.0
-    def X(v): return off + v * u
-    def Y(v): return off + v * u
 
-    draw.rounded_rectangle([X(72), Y(222), X(440), Y(290)], radius=34 * u, fill=(255, 255, 255, 36))
-    bar(draw, X(104), Y(160), 304 * u, 30 * u, 184)
-    bar(draw, X(104), Y(241), 232 * u, 30 * u, 255)
-    bar(draw, X(104), Y(322), 272 * u, 30 * u, 184)
+    def X(v):
+        return off + v * u
+
+    def Y(v):
+        return off + v * u
+
+    bar(draw, X(104), Y(160), 304 * u, 30 * u, WHITE + (140,))
+    bar(draw, X(104), Y(241), 232 * u, 30 * u, YELLOW + (255,))
+    bar(draw, X(104), Y(322), 272 * u, 30 * u, WHITE + (230,))
 
     img = Image.alpha_composite(img, layer)
     return img.resize((size, size), Image.LANCZOS)
@@ -61,5 +66,5 @@ render(512).save(OUT / "icon-512.png")
 render(192).save(OUT / "icon-192.png")
 render(180, full_bleed=True).save(OUT / "apple-touch-icon.png")
 render(512, full_bleed=True, content_scale=0.72).save(OUT / "icon-maskable-512.png")
-render(32).save(ROOT / "favicon-32.png")
+render(32).save(OUT / "favicon-32.png")
 print("icons written to", OUT)

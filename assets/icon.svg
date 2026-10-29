@@ -1,13 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="抄写台">
   <defs>
-    <linearGradient id="seal" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#d4553b"/>
-      <stop offset="1" stop-color="#a93522"/>
+    <linearGradient id="green" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4f915f"/>
+      <stop offset="1" stop-color="#2f6a3e"/>
     </linearGradient>
   </defs>
-  <rect width="512" height="512" rx="116" fill="url(#seal)"/>
-  <rect x="72" y="222" width="368" height="68" rx="34" fill="#fff" opacity=".14"/>
-  <rect x="104" y="160" width="304" height="30" rx="15" fill="#fff" opacity=".72"/>
-  <rect x="104" y="241" width="232" height="30" rx="15" fill="#fff"/>
-  <rect x="104" y="322" width="272" height="30" rx="15" fill="#fff" opacity=".72"/>
+  <rect width="512" height="512" rx="116" fill="url(#green)"/>
+  <rect x="104" y="160" width="304" height="30" rx="15" fill="#f7fbf5" opacity=".55"/>
+  <rect x="104" y="241" width="232" height="30" rx="15" fill="#f5cf5b"/>
+  <rect x="104" y="322" width="272" height="30" rx="15" fill="#f7fbf5" opacity=".9"/>
 </svg>

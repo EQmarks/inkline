@@ -1,8 +1,8 @@
-/* 抄写台 — 交互逻辑 */
+/* 抄写台 — 逐句线性抄写逻辑 */
 (function () {
   'use strict';
 
-  var STORAGE_KEY = 'chaoxie:v1';
+  var STORAGE_KEY = 'inkline:v1';
   var DEFAULT_SETTINGS = {
     theme: 'auto',
     font: 'kai',
@@ -10,31 +10,27 @@
     leading: 1.9,
     focus: true,
     numbers: true,
-    hideDone: false,
-    strike: false,
     autoScroll: true
   };
   var THEMES = ['auto', 'light', 'dark'];
   var FONTS = ['kai', 'song', 'hei'];
 
+  var TERMINALS = '。！？!?…';
+  var CLOSERS = '”’」』）)】》〉]"\u2019\u201d';
+  var MAX_SENTENCE = 42;
+
   var state = {
     text: '',
-    mode: 'line',
-    lines: [],
-    done: [],
+    sentences: [],
     cursor: 0,
     settings: null,
     updatedAt: 0,
-    firstDoneAt: 0,
-    allDoneAt: 0
+    completedAt: 0
   };
-  var undoStack = [];
   var saveTimer = null;
   var toastTimer = null;
   var pushedHistory = false;
   var els = {};
-
-  /* ---------- 小工具 ---------- */
 
   function $(sel, root) { return (root || document).querySelector(sel); }
   function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
@@ -50,91 +46,95 @@
   function clamp(n, lo, hi) { return Math.min(hi, Math.max(lo, n)); }
 
   function cleanLine(line) {
-    return line.replace(/^[ \t\u00a0]+/, '').replace(/[ \t\u00a0\u3000]+$/, '');
+    return line.replace(/\u00a0/g, ' ').trim();
+  }
+
+  function trimEnd(line) {
+    return line.replace(/\s+$/, '');
+  }
+
+  /* ---------- 智能分句 ---------- */
+
+  function isDotTerminal(text, i) {
+    var prev = text.charAt(i - 1);
+    var next = text.charAt(i + 1);
+    if (!next) return true;
+    if (/\d/.test(prev) && /\d/.test(next)) return false;
+    if (!/\s/.test(next)) return false;
+    if (/^\s*\d+\.\s*$/.test(text.slice(0, i + 1))) return false;
+    return true;
+  }
+
+  function splitParagraph(para) {
+    var out = [];
+    var buf = '';
+    for (var i = 0; i < para.length; i++) {
+      var ch = para.charAt(i);
+      buf += ch;
+      var terminal = TERMINALS.indexOf(ch) !== -1;
+      if (!terminal && ch === '.') terminal = isDotTerminal(para, i);
+      if (!terminal) continue;
+      var j = i + 1;
+      while (j < para.length) {
+        var nextCh = para.charAt(j);
+        if (TERMINALS.indexOf(nextCh) === -1 && CLOSERS.indexOf(nextCh) === -1) break;
+        buf += nextCh;
+        j++;
+      }
+      out.push(buf);
+      buf = '';
+      i = j - 1;
+    }
+    if (buf.trim()) out.push(buf);
+    return out;
+  }
+
+  function breakLong(text) {
+    if (text.length <= MAX_SENTENCE) return [text];
+    var windowEnd = Math.min(text.length, MAX_SENTENCE + 10);
+    var best = -1;
+    var groups = ['；;', '，,'];
+    for (var g = 0; g < groups.length && best < 0; g++) {
+      for (var i = windowEnd - 1; i >= 0; i--) {
+        if (groups[g].indexOf(text.charAt(i)) !== -1) { best = i; break; }
+      }
+    }
+    if (best < 0) return [text];
+    var head = trimEnd(text.slice(0, best + 1));
+    var rest = text.slice(best + 1);
+    var result = [head];
+    var tail = breakLong(rest);
+    for (var k = 0; k < tail.length; k++) result.push(tail[k]);
+    return result;
   }
 
   function splitSentences(text) {
-    var out = [];
-    var buf = '';
-    var marks = '。！？!?；;…';
-    for (var i = 0; i < text.length; i++) {
-      var ch = text.charAt(i);
-      buf += ch;
-      if (marks.indexOf(ch) !== -1) {
-        if (!buf.replace(/\s/g, '').length && out.length) {
-          out[out.length - 1] += buf;
-        } else {
-          out.push(buf);
-        }
-        buf = '';
-      }
-    }
-    if (buf.length) out.push(buf);
-    return out;
-  }
-
-  function parseLines(text, mode) {
     if (!text) return [];
     var paragraphs = String(text).replace(/\r\n?/g, '\n').split('\n');
     var out = [];
-    for (var i = 0; i < paragraphs.length; i++) {
-      var para = cleanLine(paragraphs[i]);
-      if (!para.replace(/\s/g, '').length) continue;
-      if (mode === 'sentence') {
-        var parts = splitSentences(para);
+    for (var p = 0; p < paragraphs.length; p++) {
+      var para = cleanLine(paragraphs[p]);
+      if (!para) continue;
+      var pieces = splitParagraph(para);
+      for (var i = 0; i < pieces.length; i++) {
+        var piece = cleanLine(pieces[i]);
+        if (!piece) continue;
+        var parts = breakLong(piece);
         for (var j = 0; j < parts.length; j++) {
-          var s = cleanLine(parts[j]);
-          if (s.replace(/\s/g, '').length) out.push(s);
+          var sentence = cleanLine(parts[j]);
+          if (sentence) out.push(sentence);
         }
-      } else {
-        out.push(para);
       }
     }
     return out;
   }
 
-  function fitDone(done, n) {
-    var out = done.slice(0, n);
-    while (out.length < n) out.push(false);
-    return out;
-  }
-
-  function firstUndone() {
-    for (var i = 0; i < state.done.length; i++) {
-      if (!state.done[i]) return i;
-    }
-    return -1;
-  }
-
-  function countDone() {
+  function countChars(sentences) {
     var n = 0;
-    for (var i = 0; i < state.done.length; i++) {
-      if (state.done[i]) n++;
+    for (var i = 0; i < sentences.length; i++) {
+      n += sentences[i].replace(/\s/g, '').length;
     }
     return n;
-  }
-
-  function countChars(lines) {
-    var n = 0;
-    for (var i = 0; i < lines.length; i++) {
-      n += lines[i].replace(/\s/g, '').length;
-    }
-    return n;
-  }
-
-  function pad2(n) { return n < 10 ? '0' + n : String(n); }
-
-  function formatDuration(ms) {
-    var total = Math.max(0, Math.round(ms / 1000));
-    var m = Math.floor(total / 60);
-    var s = total % 60;
-    if (m >= 60) {
-      var h = Math.floor(m / 60);
-      m = m % 60;
-      return h + ' 小时 ' + pad2(m) + ' 分';
-    }
-    if (m > 0) return m + ' 分 ' + pad2(s) + ' 秒';
-    return s + ' 秒';
   }
 
   function timeAgo(ts) {
@@ -166,8 +166,6 @@
     if (!data || typeof data !== 'object') return;
 
     if (typeof data.text === 'string') state.text = data.text;
-    state.mode = data.mode === 'sentence' ? 'sentence' : 'line';
-    if (Array.isArray(data.done)) state.done = data.done.map(Boolean);
     if (data.settings && typeof data.settings === 'object') {
       var keys = Object.keys(DEFAULT_SETTINGS);
       for (var i = 0; i < keys.length; i++) {
@@ -176,25 +174,19 @@
       }
     }
     state.updatedAt = Number(data.updatedAt) || 0;
-    state.firstDoneAt = Number(data.firstDoneAt) || 0;
-    state.allDoneAt = Number(data.allDoneAt) || 0;
-
-    state.lines = parseLines(state.text, state.mode);
-    state.done = fitDone(state.done, state.lines.length);
-    state.cursor = firstUndone();
-    if (state.cursor < 0 && state.lines.length) state.cursor = state.lines.length - 1;
+    state.completedAt = Number(data.completedAt) || 0;
+    state.sentences = splitSentences(state.text);
+    state.cursor = clamp(Number(data.cursor) || 0, 0, state.sentences.length);
   }
 
   function save(immediate) {
     state.updatedAt = Date.now();
     var payload = JSON.stringify({
       text: state.text,
-      mode: state.mode,
-      done: state.done,
+      cursor: state.cursor,
       settings: state.settings,
       updatedAt: state.updatedAt,
-      firstDoneAt: state.firstDoneAt,
-      allDoneAt: state.allDoneAt
+      completedAt: state.completedAt
     });
     clearTimeout(saveTimer);
     function flush() {
@@ -218,7 +210,7 @@
     root.setAttribute('data-theme', theme);
     root.style.colorScheme = theme;
     var meta = document.getElementById('meta-theme');
-    if (meta) meta.setAttribute('content', theme === 'dark' ? '#15120e' : '#f6f1e8');
+    if (meta) meta.setAttribute('content', theme === 'dark' ? '#12160f' : '#f1f4ee');
     var glyph = theme === 'dark' ? '☀' : '☾';
     var label = theme === 'dark' ? '切换到浅色主题' : '切换到深色主题';
     if (els.themeToggle) { els.themeToggle.textContent = glyph; els.themeToggle.setAttribute('aria-label', label); }
@@ -233,19 +225,16 @@
     root.setAttribute('data-font', s.font);
     root.setAttribute('data-focus', s.focus ? 'on' : 'off');
     root.setAttribute('data-numbers', s.numbers ? 'on' : 'off');
-    root.setAttribute('data-hide-done', s.hideDone ? 'on' : 'off');
-    root.setAttribute('data-strike', s.strike ? 'on' : 'off');
     applyTheme();
     syncSettingsForm();
-    if (state.lines.length) paint();
+    if (state.sentences.length) paint();
   }
 
   function syncSettingsForm() {
     $$('[data-segmented]').forEach(function (group) {
       var key = group.getAttribute('data-segmented');
-      var value = key === 'mode' ? state.mode : state.settings[key];
       $$('input', group).forEach(function (inp) {
-        inp.checked = inp.value === value;
+        inp.checked = inp.value === state.settings[key];
       });
     });
     $$('[data-setting]').forEach(function (inp) {
@@ -290,23 +279,20 @@
 
   function setView(view) {
     document.body.setAttribute('data-view', view);
-    document.title = view === 'reader' ? '抄写中 · 抄写台' : '抄写台 · 逐行抄写，不写串';
+    document.title = view === 'reader' ? '抄写中 · 抄写台' : '抄写台 · 逐句抄写，不写串';
     if (view === 'editor') syncResumeCard();
   }
 
   function enterReader() {
-    state.cursor = firstUndone();
+    state.cursor = clamp(state.cursor, 0, state.sentences.length);
     buildList();
     paint();
     setView('reader');
-    if (state.cursor < 0) {
-      window.scrollTo({ top: 0, behavior: 'auto' });
-    } else {
-      scrollToCurrent('auto');
-    }
+    if (state.cursor >= state.sentences.length) window.scrollTo({ top: 0, behavior: 'auto' });
+    else scrollToCurrent('auto');
     if (!pushedHistory) {
       try {
-        history.pushState({ chaoxie: 'reader' }, '');
+        history.pushState({ inkline: 'reader' }, '');
         pushedHistory = true;
       } catch (e) {}
     }
@@ -327,85 +313,79 @@
     if (!els.source) return;
     els.source.value = state.text;
     updateEditorStats();
-    els.startBtn.disabled = parseLines(state.text, state.mode).length === 0;
+    els.startBtn.disabled = state.sentences.length === 0;
     syncSettingsForm();
   }
 
   function updateEditorStats() {
     if (!els.source || !els.sourceStats) return;
     var text = els.source.value;
-    var lines = parseLines(text, state.mode);
-    var chars = (text.replace(/\s/g, '')).length;
-    els.sourceStats.textContent = lines.length + ' 行 · ' + chars + ' 字';
+    var sentences = splitSentences(text);
+    var chars = countChars(sentences);
+    els.sourceStats.textContent = sentences.length + ' 句 · ' + chars + ' 字';
   }
 
   function onTextInput() {
     state.text = els.source.value;
+    state.sentences = splitSentences(state.text);
+    state.cursor = clamp(state.cursor, 0, state.sentences.length);
     updateEditorStats();
-    els.startBtn.disabled = parseLines(state.text, state.mode).length === 0;
+    els.startBtn.disabled = state.sentences.length === 0;
     syncResumeCard();
     save();
   }
 
   function syncResumeCard() {
     if (!els.resumeCard) return;
-    var total = parseLines(state.text, state.mode).length;
-    var done = countDone();
-    if (done > total) done = total;
-    var visible = total > 0 && done > 0;
+    var total = state.sentences.length;
+    var visible = total > 0 && state.cursor > 0;
     els.resumeCard.hidden = !visible;
     if (!visible) return;
-    var meta = '';
-    if (done >= total) {
-      meta = '共 ' + total + ' 行，全部抄完 · ' + timeAgo(state.updatedAt);
-      els.resumeBtn.textContent = '查看';
+    if (state.cursor >= total) {
       els.resumeTitle.textContent = '上次已全部抄完';
+      els.resumeBtn.textContent = '查看';
+      els.resumeMeta.textContent = '共 ' + total + ' 句 · ' + timeAgo(state.updatedAt);
     } else {
-      meta = '共 ' + total + ' 行，已抄 ' + done + ' 行 · ' + timeAgo(state.updatedAt);
-      els.resumeBtn.textContent = '继续';
       els.resumeTitle.textContent = '上次没抄完';
+      els.resumeBtn.textContent = '继续';
+      els.resumeMeta.textContent = '上次抄到第 ' + (state.cursor + 1) + ' / ' + total + ' 句 · ' + timeAgo(state.updatedAt);
     }
-    els.resumeMeta.textContent = meta;
   }
 
   function startReading() {
     var text = els.source.value;
-    var lines = parseLines(text, state.mode);
-    if (!lines.length) {
+    var sentences = splitSentences(text);
+    if (!sentences.length) {
       toast('先录入一点要抄的内容');
       els.source.focus();
       return;
     }
+    if (text !== state.text) state.cursor = 0;
     state.text = text;
-    state.lines = lines;
-    state.done = fitDone(state.done, lines.length);
-    undoStack = [];
-    if (state.done.every(Boolean)) state.allDoneAt = state.allDoneAt || Date.now();
+    state.sentences = sentences;
+    state.cursor = clamp(state.cursor, 0, sentences.length);
+    if (state.cursor >= sentences.length) state.completedAt = state.completedAt || Date.now();
     enterReader();
     save(true);
   }
 
   function resumeReading() {
     state.text = els.source.value;
-    state.lines = parseLines(state.text, state.mode);
-    state.done = fitDone(state.done, state.lines.length);
-    undoStack = [];
-    if (!state.lines.length) { toast('没有可抄的内容'); return; }
+    state.sentences = splitSentences(state.text);
+    if (!state.sentences.length) { toast('没有可抄的内容'); return; }
+    state.cursor = clamp(state.cursor, 0, state.sentences.length);
     enterReader();
     save(true);
   }
 
   function resetProgress(skipConfirm) {
-    if (!skipConfirm && !window.confirm('清空抄写进度？内容会保留，可以从第一行重新抄。')) return;
-    state.done = state.lines.map(function () { return false; });
-    state.cursor = state.lines.length ? 0 : -1;
-    state.firstDoneAt = 0;
-    state.allDoneAt = 0;
-    undoStack = [];
+    if (!skipConfirm && !window.confirm('从第一句重新开始？')) return;
+    state.cursor = 0;
+    state.completedAt = 0;
     paint();
     save(true);
-    scrollToCurrent('auto');
-    toast('进度已清空');
+    window.scrollTo({ top: 0, behavior: reduceMotion() ? 'auto' : 'smooth' });
+    toast('已回到第一句');
   }
 
   /* ---------- 抄写页渲染 ---------- */
@@ -415,13 +395,13 @@
     if (!list) return;
     list.textContent = '';
     var frag = document.createDocumentFragment();
-    for (var i = 0; i < state.lines.length; i++) {
+    for (var i = 0; i < state.sentences.length; i++) {
       var li = document.createElement('li');
       var btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'line';
       btn.setAttribute('data-i', String(i));
-      btn.setAttribute('aria-pressed', 'false');
+      btn.setAttribute('aria-label', '第 ' + (i + 1) + ' 句：' + state.sentences[i]);
 
       var no = document.createElement('span');
       no.className = 'line__no';
@@ -429,15 +409,10 @@
 
       var txt = document.createElement('span');
       txt.className = 'line__text';
-      txt.textContent = state.lines[i];
-
-      var mark = document.createElement('span');
-      mark.className = 'line__mark';
-      mark.setAttribute('aria-hidden', 'true');
+      txt.textContent = state.sentences[i];
 
       btn.appendChild(no);
       btn.appendChild(txt);
-      btn.appendChild(mark);
       li.appendChild(btn);
       frag.appendChild(li);
     }
@@ -445,126 +420,97 @@
   }
 
   function makeReaderTitle() {
-    var first = state.lines[0] || '';
+    var first = state.sentences[0] || '';
     if (first.length > 18) first = first.slice(0, 18) + '…';
     return first || '抄写中';
-  }
-
-  function completionMeta() {
-    var parts = [];
-    parts.push('共 ' + state.lines.length + ' 行 · ' + countChars(state.lines) + ' 字');
-    if (state.firstDoneAt && state.allDoneAt && state.allDoneAt >= state.firstDoneAt) {
-      parts.push('耗时 ' + formatDuration(state.allDoneAt - state.firstDoneAt));
-    }
-    return parts.join(' · ');
-  }
-
-  function canUndo() {
-    for (var i = 0; i < undoStack.length; i++) {
-      if (state.done[undoStack[i]]) return true;
-    }
-    return false;
   }
 
   function paint() {
     if (!els.list) return;
     var buttons = els.list.querySelectorAll('.line');
-    var total = state.lines.length;
-    var doneCount = 0;
-    var cur = state.cursor;
+    var total = state.sentences.length;
+    var cursor = state.cursor;
+    var completed = total > 0 && cursor >= total;
 
     for (var i = 0; i < buttons.length; i++) {
       var btn = buttons[i];
-      var isDone = !!state.done[i];
-      if (isDone) doneCount++;
-      var isCurrent = !isDone && i === cur;
-      var isFar = !!state.settings.focus && cur >= 0 && Math.abs(i - cur) > 2;
-      btn.classList.toggle('is-done', isDone);
+      var isPast = i < cursor;
+      var isCurrent = i === cursor;
+      var isFuture = i > cursor;
+      var far = !!state.settings.focus && cursor >= 0 && Math.abs(i - cursor) > 2;
+      btn.classList.toggle('is-past', isPast);
       btn.classList.toggle('is-current', isCurrent);
-      btn.classList.toggle('is-far', isFar);
-      btn.setAttribute('aria-pressed', isDone ? 'true' : 'false');
-      if (isCurrent) btn.setAttribute('aria-current', 'true');
+      btn.classList.toggle('is-future', isFuture);
+      btn.classList.toggle('is-far', isFuture && far);
+      if (isCurrent) btn.setAttribute('aria-current', 'step');
       else btn.removeAttribute('aria-current');
     }
 
-    var pct = total ? Math.round((doneCount / total) * 100) : 0;
+    var pct = total ? Math.round((cursor / total) * 100) : 0;
     if (els.progressFill) els.progressFill.style.width = pct + '%';
     if (els.progressBar) els.progressBar.setAttribute('aria-valuenow', String(pct));
-    if (els.progressText) els.progressText.textContent = doneCount + ' / ' + total;
-
-    if (els.undoBtn) els.undoBtn.disabled = !canUndo();
-
-    var allDone = total > 0 && doneCount === total;
-    if (els.completeBtn) {
-      els.completeBtn.disabled = allDone;
-      els.completeBtn.textContent = allDone ? '已全部完成' : '完成本行';
+    if (els.progressText) {
+      els.progressText.textContent = completed ? '全部完成' : '第 ' + (cursor + 1) + ' / ' + total + ' 句';
     }
+
+    if (els.prevBtn) els.prevBtn.disabled = cursor <= 0;
+    if (els.nextBtn) {
+      els.nextBtn.disabled = completed;
+      els.nextBtn.textContent = completed ? '已全部抄完' : (total && cursor === total - 1 ? '完成最后一句' : '下一句');
+    }
+
     if (els.banner) {
-      els.banner.hidden = !allDone;
-      if (allDone) {
-        if (els.bannerTitle) els.bannerTitle.textContent = '全部 ' + total + ' 行抄完了';
-        if (els.bannerMeta) els.bannerMeta.textContent = completionMeta();
+      els.banner.hidden = !completed;
+      if (completed) {
+        if (els.bannerTitle) els.bannerTitle.textContent = '全部 ' + total + ' 句抄完了';
+        if (els.bannerMeta) els.bannerMeta.textContent = '共 ' + total + ' 句 · ' + countChars(state.sentences) + ' 字';
       }
     }
+
     if (els.readerTitle) els.readerTitle.textContent = makeReaderTitle();
+    document.title = completed ? '全部抄完 · 抄写台' : '第 ' + (cursor + 1) + ' / ' + total + ' 句 · 抄写台';
   }
 
   function scrollToCurrent(behavior) {
-    if (!els.list || state.cursor < 0) return;
+    if (!els.list || state.cursor < 0 || state.cursor >= state.sentences.length) return;
     var btn = els.list.querySelector('.line[data-i="' + state.cursor + '"]');
     if (!btn) return;
     var mode = reduceMotion() ? 'auto' : (behavior || 'smooth');
     try { btn.scrollIntoView({ block: 'center', behavior: mode }); } catch (e) { btn.scrollIntoView(); }
   }
 
-  function completeLine(i) {
-    if (!(i >= 0 && i < state.lines.length) || state.done[i]) return;
-    state.done[i] = true;
-    if (!state.firstDoneAt) state.firstDoneAt = Date.now();
-    undoStack.push(i);
-    if (undoStack.length > 300) undoStack.shift();
-    state.cursor = firstUndone();
-    if (state.cursor === -1) state.allDoneAt = Date.now();
+  function setCursor(index, options) {
+    var opts = options || {};
+    var total = state.sentences.length;
+    var next = clamp(index, 0, total);
+    if (next === state.cursor) {
+      if (opts.scroll) scrollToCurrent('smooth');
+      return;
+    }
+    state.cursor = next;
+    state.completedAt = next >= total ? Date.now() : 0;
     paint();
     save();
-    if (state.settings.autoScroll) {
-      if (state.cursor === -1) {
-        window.scrollTo({ top: 0, behavior: reduceMotion() ? 'auto' : 'smooth' });
-      } else {
-        scrollToCurrent('smooth');
-      }
+    if (opts.scroll !== false) {
+      if (next >= total) window.scrollTo({ top: 0, behavior: reduceMotion() ? 'auto' : 'smooth' });
+      else scrollToCurrent('smooth');
     }
+  }
+
+  function advance() {
+    if (state.cursor >= state.sentences.length) return;
+    setCursor(state.cursor + 1, { scroll: state.settings.autoScroll });
+  }
+
+  function retreat() {
+    if (state.cursor <= 0) return;
+    setCursor(state.cursor - 1, { scroll: state.settings.autoScroll });
   }
 
   function activateLine(i) {
-    if (!(i >= 0 && i < state.lines.length)) return;
-    if (state.done[i]) {
-      state.done[i] = false;
-      state.allDoneAt = 0;
-      state.cursor = firstUndone();
-      paint();
-      save();
-      scrollToCurrent('smooth');
-      toast('第 ' + (i + 1) + ' 行已改回未抄');
-    } else {
-      completeLine(i);
-    }
-  }
-
-  function undo() {
-    var idx = -1;
-    while (undoStack.length) {
-      var j = undoStack.pop();
-      if (state.done[j]) { idx = j; break; }
-    }
-    if (idx === -1) { toast('没有可以撤回的行'); return; }
-    state.done[idx] = false;
-    state.allDoneAt = 0;
-    state.cursor = firstUndone();
-    paint();
-    save();
-    scrollToCurrent('smooth');
-    toast('已撤回第 ' + (idx + 1) + ' 行');
+    if (!(i >= 0 && i < state.sentences.length)) return;
+    if (i === state.cursor) return;
+    setCursor(i, { scroll: false });
   }
 
   function openSettings() {
@@ -595,14 +541,9 @@
     els.startBtn.addEventListener('click', startReading);
     els.resumeBtn.addEventListener('click', resumeReading);
 
-    els.source.addEventListener('dragover', function (e) {
-      e.preventDefault();
-      els.source.classList.add('is-dragover');
-    });
-    els.source.addEventListener('dragleave', function () { els.source.classList.remove('is-dragover'); });
+    els.source.addEventListener('dragover', function (e) { e.preventDefault(); });
     els.source.addEventListener('drop', function (e) {
       e.preventDefault();
-      els.source.classList.remove('is-dragover');
       var file = e.dataTransfer && e.dataTransfer.files ? e.dataTransfer.files[0] : null;
       if (file) readFile(file);
     });
@@ -627,12 +568,9 @@
       if (!window.confirm('清空录入的内容和抄写进度？')) return;
       els.source.value = '';
       state.text = '';
-      state.lines = [];
-      state.done = [];
-      state.cursor = -1;
-      state.firstDoneAt = 0;
-      state.allDoneAt = 0;
-      undoStack = [];
+      state.sentences = [];
+      state.cursor = 0;
+      state.completedAt = 0;
       syncResumeCard();
       onTextInput();
       save(true);
@@ -666,10 +604,8 @@
       activateLine(Number(btn.getAttribute('data-i')));
     });
 
-    els.completeBtn.addEventListener('click', function () {
-      if (state.cursor >= 0) completeLine(state.cursor);
-    });
-    els.undoBtn.addEventListener('click', undo);
+    els.nextBtn.addEventListener('click', advance);
+    els.prevBtn.addEventListener('click', retreat);
     els.backBtn.addEventListener('click', closeReader);
     els.settingsBtn.addEventListener('click', openSettings);
     els.bannerEditBtn.addEventListener('click', closeReader);
@@ -708,10 +644,6 @@
         else val = inp.value;
         setSetting(key, val);
       });
-      inp.addEventListener('change', function () {
-        if (inp.type !== 'range') return;
-        setSetting(inp.getAttribute('data-setting'), Number(inp.value));
-      });
     });
 
     $$('[data-segmented]').forEach(function (group) {
@@ -719,15 +651,7 @@
       $$('input', group).forEach(function (inp) {
         inp.addEventListener('change', function () {
           if (!inp.checked) return;
-          if (key === 'mode') {
-            state.mode = inp.value;
-            updateEditorStats();
-            els.startBtn.disabled = parseLines(state.text, state.mode).length === 0;
-            syncSettingsForm();
-            save();
-          } else {
-            setSetting(key, inp.value);
-          }
+          setSetting(key, inp.value);
         });
       });
     });
@@ -741,12 +665,12 @@
       var tag = target && target.tagName ? target.tagName.toLowerCase() : '';
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || tag === 'a' || (target && target.isContentEditable)) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === ' ' || e.key === 'Enter') {
+      if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowRight') {
         e.preventDefault();
-        if (state.cursor >= 0) completeLine(state.cursor);
-      } else if (e.key === 'Backspace' || e.key === 'z' || e.key === 'Z') {
+        advance();
+      } else if (e.key === 'Backspace' || e.key === 'ArrowLeft' || e.key === 'z' || e.key === 'Z') {
         e.preventDefault();
-        undo();
+        retreat();
       } else if (e.key === 'e' || e.key === 'E') {
         e.preventDefault();
         closeReader();
@@ -791,7 +715,7 @@
     els.sourceStats = $('#source-stats');
     els.startBtn = $('#start-btn');
     els.resumeCard = $('#resume-card');
-    els.resumeTitle = $('.resume__title');
+    els.resumeTitle = $('#resume-title');
     els.resumeMeta = $('#resume-meta');
     els.resumeBtn = $('#resume-btn');
     els.importBtn = $('#import-btn');
@@ -812,8 +736,8 @@
     els.bannerMeta = $('#banner-meta');
     els.restartBtn = $('#restart-btn');
     els.bannerEditBtn = $('#banner-edit-btn');
-    els.completeBtn = $('#complete-btn');
-    els.undoBtn = $('#undo-btn');
+    els.nextBtn = $('#next-btn');
+    els.prevBtn = $('#prev-btn');
     els.settingsBtn = $('#settings-btn');
 
     els.dialog = $('#settings-dialog');
@@ -825,11 +749,8 @@
   }
 
   var SAMPLE_TEXT = [
-    '立身以立学为先，立学以读书为本。',
-    '读书之法，在循序而渐进，熟读而精思。',
-    '博观而约取，厚积而薄发。',
-    '纸上得来终觉浅，绝知此事要躬行。',
-    '问渠那得清如许？为有源头活水来。'
+    '君子曰：学不可以已。青，取之于蓝，而青于蓝；冰，水为之，而寒于水。故木受绳则直，金就砺则利。',
+    '君子博学而日参省乎己，则知明而行无过矣。吾尝终日而思矣，不如须臾之所学也；吾尝跂而望矣，不如登高之博见也。'
   ].join('\n');
 
   function init() {
