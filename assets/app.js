@@ -1,4 +1,4 @@
-/* 抄写台 — 逐句线性抄写逻辑 */
+/* 抄写台 — 逐句线性抄写逻辑（段落模式 + 分句列表模式，中英文） */
 (function () {
   'use strict';
 
@@ -10,18 +10,24 @@
     leading: 1.9,
     focus: true,
     numbers: true,
-    autoScroll: true
+    autoScroll: true,
+    layout: 'paragraph',
+    indent: true
   };
   var THEMES = ['auto', 'light', 'dark'];
   var FONTS = ['kai', 'song', 'hei'];
+  var LAYOUTS = ['paragraph', 'sentences'];
 
   var TERMINALS = '。！？!?…';
   var CLOSERS = '”’」』）)】》〉]"\u2019\u201d';
   var MAX_SENTENCE = 42;
+  var ABBREVIATIONS = ['mr', 'mrs', 'ms', 'dr', 'prof', 'st', 'jr', 'sr', 'vs', 'etc', 'inc', 'ltd', 'co', 'corp', 'no', 'fig', 'al', 'eg', 'ie', 'am', 'pm'];
 
   var state = {
     text: '',
     sentences: [],
+    paragraphs: [],
+    paraOf: [],
     cursor: 0,
     settings: null,
     updatedAt: 0,
@@ -53,15 +59,37 @@
     return line.replace(/\s+$/, '');
   }
 
-  /* ---------- 智能分句 ---------- */
+  /* ---------- 智能分句（中英文） ---------- */
 
   function isDotTerminal(text, i) {
     var prev = text.charAt(i - 1);
     var next = text.charAt(i + 1);
     if (!next) return true;
     if (/\d/.test(prev) && /\d/.test(next)) return false;
-    if (!/\s/.test(next)) return false;
     if (/^\s*\d+\.\s*$/.test(text.slice(0, i + 1))) return false;
+
+    var k = i + 1;
+    var hadCloser = false;
+    while (k < text.length) {
+      var ch = text.charAt(k);
+      if (CLOSERS.indexOf(ch) !== -1) { hadCloser = true; k++; continue; }
+      if (/\s/.test(ch)) { k++; continue; }
+      break;
+    }
+    var afterChar = k < text.length ? text.charAt(k) : '';
+    var hasSpaceAfter = /\s/.test(next);
+    if (!hasSpaceAfter && !hadCloser) return false;
+
+    var before = text.slice(0, i).replace(/\s+$/, '');
+    var wordMatch = before.match(/([A-Za-z]+)$/);
+    if (wordMatch) {
+      var word = wordMatch[1].toLowerCase();
+      if (ABBREVIATIONS.indexOf(word) !== -1) return false;
+      if (wordMatch[1].length === 1) return false;
+    }
+    if (/(?:[A-Za-z]\.){2,}$/.test(before)) return false;
+
+    if (afterChar && /^[a-z]/.test(afterChar)) return false;
     return true;
   }
 
@@ -108,25 +136,42 @@
     return result;
   }
 
-  function splitSentences(text) {
-    if (!text) return [];
-    var paragraphs = String(text).replace(/\r\n?/g, '\n').split('\n');
-    var out = [];
-    for (var p = 0; p < paragraphs.length; p++) {
-      var para = cleanLine(paragraphs[p]);
-      if (!para) continue;
-      var pieces = splitParagraph(para);
+  function parseDocument(text) {
+    var doc = { sentences: [], paragraphs: [], paraOf: [] };
+    if (!text) return doc;
+    var lines = String(text).replace(/\r\n?/g, '\n').split('\n');
+    for (var li = 0; li < lines.length; li++) {
+      var line = cleanLine(lines[li]);
+      if (!line) continue;
+      var pieces = splitParagraph(line);
+      var indices = [];
       for (var i = 0; i < pieces.length; i++) {
         var piece = cleanLine(pieces[i]);
         if (!piece) continue;
-        var parts = breakLong(piece);
-        for (var j = 0; j < parts.length; j++) {
-          var sentence = cleanLine(parts[j]);
-          if (sentence) out.push(sentence);
+        var hasCjk = /[\u4e00-\u9fff]/.test(piece);
+        var parts = hasCjk ? breakLong(piece) : [piece];
+        for (var k = 0; k < parts.length; k++) {
+          var sentence = cleanLine(parts[k]);
+          if (!sentence) continue;
+          doc.paraOf.push(doc.paragraphs.length);
+          indices.push(doc.sentences.length);
+          doc.sentences.push(sentence);
         }
       }
+      if (indices.length) doc.paragraphs.push(indices);
     }
-    return out;
+    return doc;
+  }
+
+  function splitSentences(text) {
+    return parseDocument(text).sentences;
+  }
+
+  function applyDocument(text) {
+    var doc = parseDocument(text);
+    state.sentences = doc.sentences;
+    state.paragraphs = doc.paragraphs;
+    state.paraOf = doc.paraOf;
   }
 
   function countChars(sentences) {
@@ -173,9 +218,10 @@
         if (typeof data.settings[k] !== 'undefined') state.settings[k] = data.settings[k];
       }
     }
+    if (LAYOUTS.indexOf(state.settings.layout) === -1) state.settings.layout = 'paragraph';
     state.updatedAt = Number(data.updatedAt) || 0;
     state.completedAt = Number(data.completedAt) || 0;
-    state.sentences = splitSentences(state.text);
+    applyDocument(state.text);
     state.cursor = clamp(Number(data.cursor) || 0, 0, state.sentences.length);
   }
 
@@ -225,6 +271,8 @@
     root.setAttribute('data-font', s.font);
     root.setAttribute('data-focus', s.focus ? 'on' : 'off');
     root.setAttribute('data-numbers', s.numbers ? 'on' : 'off');
+    root.setAttribute('data-layout', s.layout);
+    root.setAttribute('data-indent', s.indent ? 'on' : 'off');
     applyTheme();
     syncSettingsForm();
     if (state.sentences.length) paint();
@@ -252,8 +300,13 @@
     if (key === 'leading') value = Math.round(clamp(value, 1.4, 2.6) * 10) / 10;
     if (key === 'theme' && THEMES.indexOf(value) === -1) return;
     if (key === 'font' && FONTS.indexOf(value) === -1) return;
+    if (key === 'layout' && LAYOUTS.indexOf(value) === -1) return;
     state.settings[key] = value;
     applySettings();
+    if (key === 'layout' && document.body.getAttribute('data-view') === 'reader') {
+      buildView();
+      scrollToCurrent('auto');
+    }
     save();
   }
 
@@ -285,8 +338,7 @@
 
   function enterReader() {
     state.cursor = clamp(state.cursor, 0, state.sentences.length);
-    buildList();
-    paint();
+    buildView();
     setView('reader');
     if (state.cursor >= state.sentences.length) window.scrollTo({ top: 0, behavior: 'auto' });
     else scrollToCurrent('auto');
@@ -320,14 +372,14 @@
   function updateEditorStats() {
     if (!els.source || !els.sourceStats) return;
     var text = els.source.value;
-    var sentences = splitSentences(text);
-    var chars = countChars(sentences);
-    els.sourceStats.textContent = sentences.length + ' 句 · ' + chars + ' 字';
+    var doc = parseDocument(text);
+    var chars = countChars(doc.sentences);
+    els.sourceStats.textContent = doc.sentences.length + ' 句 · ' + chars + ' 字';
   }
 
   function onTextInput() {
     state.text = els.source.value;
-    state.sentences = splitSentences(state.text);
+    applyDocument(state.text);
     state.cursor = clamp(state.cursor, 0, state.sentences.length);
     updateEditorStats();
     els.startBtn.disabled = state.sentences.length === 0;
@@ -354,24 +406,26 @@
 
   function startReading() {
     var text = els.source.value;
-    var sentences = splitSentences(text);
-    if (!sentences.length) {
+    var doc = parseDocument(text);
+    if (!doc.sentences.length) {
       toast('先录入一点要抄的内容');
       els.source.focus();
       return;
     }
     if (text !== state.text) state.cursor = 0;
     state.text = text;
-    state.sentences = sentences;
-    state.cursor = clamp(state.cursor, 0, sentences.length);
-    if (state.cursor >= sentences.length) state.completedAt = state.completedAt || Date.now();
+    state.sentences = doc.sentences;
+    state.paragraphs = doc.paragraphs;
+    state.paraOf = doc.paraOf;
+    state.cursor = clamp(state.cursor, 0, doc.sentences.length);
+    if (state.cursor >= doc.sentences.length) state.completedAt = state.completedAt || Date.now();
     enterReader();
     save(true);
   }
 
   function resumeReading() {
     state.text = els.source.value;
-    state.sentences = splitSentences(state.text);
+    applyDocument(state.text);
     if (!state.sentences.length) { toast('没有可抄的内容'); return; }
     state.cursor = clamp(state.cursor, 0, state.sentences.length);
     enterReader();
@@ -390,10 +444,17 @@
 
   /* ---------- 抄写页渲染 ---------- */
 
-  function buildList() {
-    var list = els.list;
-    if (!list) return;
-    list.textContent = '';
+  function buildView() {
+    if (!els.list) return;
+    els.list.textContent = '';
+    var mode = state.settings.layout === 'sentences' ? 'sentences' : 'paragraph';
+    els.list.className = mode === 'paragraph' ? 'paras' : 'lines';
+    if (mode === 'paragraph') buildParagraphs();
+    else buildLines();
+    paint();
+  }
+
+  function buildLines() {
     var frag = document.createDocumentFragment();
     for (var i = 0; i < state.sentences.length; i++) {
       var li = document.createElement('li');
@@ -416,34 +477,85 @@
       li.appendChild(btn);
       frag.appendChild(li);
     }
-    list.appendChild(frag);
+    els.list.appendChild(frag);
+  }
+
+  function buildParagraphs() {
+    var frag = document.createDocumentFragment();
+    for (var p = 0; p < state.paragraphs.length; p++) {
+      var li = document.createElement('li');
+      li.className = 'para';
+      li.setAttribute('data-p', String(p));
+      var indices = state.paragraphs[p];
+      for (var j = 0; j < indices.length; j++) {
+        var i = indices[j];
+        var sentence = state.sentences[i];
+        if (j > 0) {
+          var prev = state.sentences[indices[j - 1]];
+          if (/[A-Za-z0-9)\]]$/.test(prev) || /^[A-Za-z0-9(\[]/.test(sentence)) {
+            li.appendChild(document.createTextNode(' '));
+          }
+        }
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'sentence';
+        btn.setAttribute('data-i', String(i));
+        btn.setAttribute('aria-label', '第 ' + (i + 1) + ' 句：' + sentence);
+        btn.textContent = sentence;
+        li.appendChild(btn);
+      }
+      frag.appendChild(li);
+    }
+    els.list.appendChild(frag);
   }
 
   function makeReaderTitle() {
     var first = state.sentences[0] || '';
-    if (first.length > 18) first = first.slice(0, 18) + '…';
+    if (first.length > 18) first = first.slice(0, 18).replace(/\s+$/, '') + '…';
     return first || '抄写中';
   }
 
   function paint() {
     if (!els.list) return;
-    var buttons = els.list.querySelectorAll('.line');
     var total = state.sentences.length;
     var cursor = state.cursor;
     var completed = total > 0 && cursor >= total;
+    var paragraphMode = state.settings.layout !== 'sentences';
 
-    for (var i = 0; i < buttons.length; i++) {
-      var btn = buttons[i];
-      var isPast = i < cursor;
-      var isCurrent = i === cursor;
-      var isFuture = i > cursor;
-      var far = !!state.settings.focus && cursor >= 0 && Math.abs(i - cursor) > 2;
-      btn.classList.toggle('is-past', isPast);
-      btn.classList.toggle('is-current', isCurrent);
-      btn.classList.toggle('is-future', isFuture);
-      btn.classList.toggle('is-far', isFuture && far);
-      if (isCurrent) btn.setAttribute('aria-current', 'step');
-      else btn.removeAttribute('aria-current');
+    if (paragraphMode) {
+      var spans = els.list.querySelectorAll('.sentence');
+      for (var s = 0; s < spans.length; s++) {
+        var span = spans[s];
+        var idx = Number(span.getAttribute('data-i'));
+        var past = idx < cursor;
+        var current = idx === cursor;
+        span.classList.toggle('is-past', past);
+        span.classList.toggle('is-current', current);
+        if (current) span.setAttribute('aria-current', 'step');
+        else span.removeAttribute('aria-current');
+      }
+      var paraEls = els.list.querySelectorAll('.para');
+      var curPara = -1;
+      if (total) curPara = state.paraOf[cursor >= total ? total - 1 : cursor];
+      for (var p = 0; p < paraEls.length; p++) {
+        var farPara = !!state.settings.focus && curPara >= 0 && Math.abs(p - curPara) > 1;
+        paraEls[p].classList.toggle('is-far-para', farPara);
+      }
+    } else {
+      var buttons = els.list.querySelectorAll('.line');
+      for (var b = 0; b < buttons.length; b++) {
+        var btn = buttons[b];
+        var isPast = b < cursor;
+        var isCurrent = b === cursor;
+        var isFuture = b > cursor;
+        var far = !!state.settings.focus && cursor >= 0 && Math.abs(b - cursor) > 2;
+        btn.classList.toggle('is-past', isPast);
+        btn.classList.toggle('is-current', isCurrent);
+        btn.classList.toggle('is-future', isFuture);
+        btn.classList.toggle('is-far', isFuture && far);
+        if (isCurrent) btn.setAttribute('aria-current', 'step');
+        else btn.removeAttribute('aria-current');
+      }
     }
 
     var pct = total ? Math.round((cursor / total) * 100) : 0;
@@ -473,10 +585,10 @@
 
   function scrollToCurrent(behavior) {
     if (!els.list || state.cursor < 0 || state.cursor >= state.sentences.length) return;
-    var btn = els.list.querySelector('.line[data-i="' + state.cursor + '"]');
-    if (!btn) return;
+    var node = els.list.querySelector('[data-i="' + state.cursor + '"]');
+    if (!node) return;
     var mode = reduceMotion() ? 'auto' : (behavior || 'smooth');
-    try { btn.scrollIntoView({ block: 'center', behavior: mode }); } catch (e) { btn.scrollIntoView(); }
+    try { node.scrollIntoView({ block: 'center', behavior: mode }); } catch (e) { node.scrollIntoView(); }
   }
 
   function setCursor(index, options) {
@@ -556,11 +668,19 @@
     });
 
     els.sampleBtn.addEventListener('click', function () {
-      if (state.text.trim() && !window.confirm('用示例替换当前内容？')) return;
-      els.source.value = SAMPLE_TEXT;
+      if (state.text.trim() && !window.confirm('用中文示例替换当前内容？')) return;
+      els.source.value = SAMPLE_CN;
       onTextInput();
       els.source.focus();
-      toast('已填入示例');
+      toast('已填入中文示例');
+    });
+
+    els.sampleEnBtn.addEventListener('click', function () {
+      if (state.text.trim() && !window.confirm('用英文示例替换当前内容？')) return;
+      els.source.value = SAMPLE_EN;
+      onTextInput();
+      els.source.focus();
+      toast('已填入英文示例');
     });
 
     els.clearBtn.addEventListener('click', function () {
@@ -568,7 +688,7 @@
       if (!window.confirm('清空录入的内容和抄写进度？')) return;
       els.source.value = '';
       state.text = '';
-      state.sentences = [];
+      applyDocument('');
       state.cursor = 0;
       state.completedAt = 0;
       syncResumeCard();
@@ -599,9 +719,9 @@
   function bindReader() {
     els.list.addEventListener('click', function (e) {
       var target = e.target;
-      var btn = target && target.closest ? target.closest('.line') : null;
-      if (!btn || !els.list.contains(btn)) return;
-      activateLine(Number(btn.getAttribute('data-i')));
+      var node = target && target.closest ? target.closest('.line, .sentence') : null;
+      if (!node || !els.list.contains(node)) return;
+      activateLine(Number(node.getAttribute('data-i')));
     });
 
     els.nextBtn.addEventListener('click', advance);
@@ -720,6 +840,7 @@
     els.resumeBtn = $('#resume-btn');
     els.importBtn = $('#import-btn');
     els.sampleBtn = $('#sample-btn');
+    els.sampleEnBtn = $('#sample-en-btn');
     els.clearBtn = $('#clear-btn');
     els.fileInput = $('#file-input');
     els.themeToggle = $('#theme-toggle');
@@ -748,9 +869,14 @@
     els.toast = $('#toast');
   }
 
-  var SAMPLE_TEXT = [
+  var SAMPLE_CN = [
     '君子曰：学不可以已。青，取之于蓝，而青于蓝；冰，水为之，而寒于水。故木受绳则直，金就砺则利。',
     '君子博学而日参省乎己，则知明而行无过矣。吾尝终日而思矣，不如须臾之所学也；吾尝跂而望矣，不如登高之博见也。'
+  ].join('\n');
+
+  var SAMPLE_EN = [
+    'Reading is to the mind what exercise is to the body. A room without books is like a body without a soul.',
+    'Mr. Smith said, "The more that you read, the more things you will know." It is about 3.14 in the U.S. system. Does it split correctly? Yes, it does!'
   ].join('\n');
 
   function init() {

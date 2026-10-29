@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="light" data-font="kai" data-focus="on" data-numbers="on">
+<html lang="zh-CN" data-theme="light" data-font="kai" data-focus="on" data-numbers="on" data-layout="paragraph" data-indent="on">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>抄写台 · 逐句抄写，不写串</title>
-<meta name="description" content="粘贴整段文字，自动分句，点哪句就从哪句开始抄：当前句黄色高亮，抄过的句子变灰，进度按顺序推进。手机、电脑都能用，断网也能抄。" />
+<meta name="description" content="粘贴整段文字，自动分句并以原文段落呈现，点哪句就从哪句开始抄：当前句黄色高亮，抄过的句子变灰，进度按顺序推进。中英文、手机电脑、断网可用。" />
 <meta id="meta-theme" name="theme-color" content="#f1f4ee" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-title" content="抄写台" />
@@ -48,10 +48,11 @@
       <span id="source-stats" class="stats">0 句 · 0 字</span>
     </div>
     <textarea id="source-text" class="source" spellcheck="false" placeholder="把要抄的整段文字粘贴到这里，不用自己分行。&#10;&#10;例如：&#10;君子曰：学不可以已。青，取之于蓝，而青于蓝；冰，水为之，而寒于水。&#10;故木受绳则直，金就砺则利。"></textarea>
-    <p class="split-hint">自动按句切分：遇到 。！？ 断开；太长的句子再在分号、逗号处拆短，每句一行。</p>
+    <p class="split-hint">自动按句切分，中英文都支持：遇到 。！？!? 断开，引号跟随；太长的句子再在分号、逗号处拆短。</p>
     <div class="editor-tools">
       <button id="import-btn" class="link-btn" type="button">导入 txt / md 文件</button>
-      <button id="sample-btn" class="link-btn" type="button">填入示例</button>
+      <button id="sample-btn" class="link-btn" type="button">中文示例</button>
+      <button id="sample-en-btn" class="link-btn" type="button">英文示例</button>
       <button id="clear-btn" class="link-btn" type="button">清空</button>
       <input id="file-input" type="file" accept=".txt,.md,.markdown,text/plain,text/markdown" hidden />
     </div>
@@ -130,6 +131,14 @@
     </div>
 
     <div class="sheet__group">
+      <p class="sheet__label">显示方式</p>
+      <div class="segmented" data-segmented="layout" role="radiogroup" aria-label="显示方式">
+        <label><input type="radio" name="layout" value="paragraph" /><span>原文段落</span></label>
+        <label><input type="radio" name="layout" value="sentences" /><span>分句列表</span></label>
+      </div>
+    </div>
+
+    <div class="sheet__group">
       <div class="range-row"><label for="size-range">字号</label><output id="size-out" for="size-range">19</output></div>
       <input id="size-range" class="range" type="range" min="15" max="30" step="1" data-setting="size" />
     </div>
@@ -140,8 +149,9 @@
     </div>
 
     <div class="sheet__group sheet__group--list">
-      <label class="switch-row"><span>聚焦当前句（远处句子变淡）</span><input type="checkbox" data-setting="focus" /><i class="switch" aria-hidden="true"></i></label>
-      <label class="switch-row"><span>显示句号序号</span><input type="checkbox" data-setting="numbers" /><i class="switch" aria-hidden="true"></i></label>
+      <label class="switch-row"><span>段落首行缩进</span><input type="checkbox" data-setting="indent" /><i class="switch" aria-hidden="true"></i></label>
+      <label class="switch-row"><span>聚焦当前句（远处变淡）</span><input type="checkbox" data-setting="focus" /><i class="switch" aria-hidden="true"></i></label>
+      <label class="switch-row"><span>显示序号（分句列表）</span><input type="checkbox" data-setting="numbers" /><i class="switch" aria-hidden="true"></i></label>
       <label class="switch-row"><span>切换后自动滚动到当前句</span><input type="checkbox" data-setting="autoScroll" /><i class="switch" aria-hidden="true"></i></label>
     </div>
 
