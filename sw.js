@@ -1,5 +1,5 @@
 /* 抄写台 service worker：离线可用 */
-const CACHE_NAME = 'inkline-v5';
+const CACHE_NAME = 'inkline-v6';
 const ASSETS = [
   './',
   './index.html',

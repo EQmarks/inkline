@@ -632,8 +632,8 @@ body[data-view="reader"] #view-reader { display: block; }
 .sentence {
   appearance: none;
   display: inline;
-  margin: -3px 0;
-  padding: 3px 0;
+  margin: 0;
+  padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;

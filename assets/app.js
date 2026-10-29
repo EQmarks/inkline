@@ -534,13 +534,14 @@
             li.appendChild(document.createTextNode(' '));
           }
         }
-        var btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'sentence';
-        btn.setAttribute('data-i', String(i));
-        btn.setAttribute('aria-label', '第 ' + (i + 1) + ' 句：' + sentence);
-        btn.textContent = sentence;
-        li.appendChild(btn);
+        var sentenceNode = document.createElement('span');
+        sentenceNode.className = 'sentence';
+        sentenceNode.setAttribute('data-i', String(i));
+        sentenceNode.setAttribute('role', 'button');
+        sentenceNode.setAttribute('tabindex', '-1');
+        sentenceNode.setAttribute('aria-label', '第 ' + (i + 1) + ' 句：' + sentence);
+        sentenceNode.textContent = sentence;
+        li.appendChild(sentenceNode);
       }
       frag.appendChild(li);
     }
