@@ -6,6 +6,8 @@
 
 手机、电脑都能用，断网也能用（PWA），内容只存在本机浏览器。
 
+**在线使用：<https://eqmarks.github.io/inkline/>**（GitHub Pages）
+
 ![桌面端抄写界面](docs/reader-desktop.png)
 
 ## 怎么防写串
