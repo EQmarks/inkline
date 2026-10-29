@@ -72,6 +72,15 @@
     <button id="resume-btn" class="btn btn--ghost btn--sm" type="button">继续</button>
   </div>
 
+  <div id="install-card" class="install" hidden>
+    <div class="install__body">
+      <p class="install__title">安装到手机桌面</p>
+      <p class="install__meta">像 App 一样全屏打开，断网也能用</p>
+    </div>
+    <button id="install-btn" class="btn btn--ghost btn--sm" type="button">安装</button>
+    <button id="install-close" class="icon-btn install__close" type="button" aria-label="不再提示">✕</button>
+  </div>
+
   <button id="start-btn" class="btn btn--primary btn--block" type="button" disabled>开始抄写</button>
   <p class="footnote">内容只保存在这台设备的浏览器里，不会上传 · <a href="https://github.com/EQmarks/inkline" target="_blank" rel="noopener">GitHub</a></p>
 </main>
@@ -189,6 +198,33 @@
     <div class="sheet__group sheet__group--actions">
       <button id="reset-progress-btn" class="btn btn--ghost btn--sm" type="button">从头开始</button>
       <button id="edit-from-sheet-btn" class="btn btn--ghost btn--sm" type="button">修改内容</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="install-dialog" class="sheet" aria-labelledby="install-title">
+  <form method="dialog" class="sheet__inner">
+    <div class="sheet__head">
+      <h2 id="install-title">安装到手机桌面</h2>
+      <button class="icon-btn" type="submit" aria-label="关闭">✕</button>
+    </div>
+    <div class="sheet__group">
+      <p class="sheet__label">iPhone / iPad（用 Safari 打开）</p>
+      <ol class="install-list">
+        <li>点浏览器底部（或顶部）的「分享」按钮</li>
+        <li>在菜单里选「添加到主屏幕」</li>
+        <li>点右上角「添加」</li>
+      </ol>
+    </div>
+    <div class="sheet__group">
+      <p class="sheet__label">Android（Chrome / Edge）</p>
+      <ol class="install-list">
+        <li>点右上角「⋮」菜单</li>
+        <li>选「添加到主屏幕」或「安装应用」</li>
+      </ol>
+    </div>
+    <div class="sheet__group sheet__group--actions">
+      <button class="btn btn--ghost btn--sm" type="submit">知道了</button>
     </div>
   </form>
 </dialog>

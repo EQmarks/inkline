@@ -484,6 +484,24 @@ body[data-view="reader"] #view-reader { display: block; }
   background: var(--accent-soft);
 }
 .resume[hidden] { display: none; }
+.install {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  margin: 0 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.install[hidden] { display: none; }
+.install__body { flex: 1; min-width: 0; }
+.install__title { margin: 0; font-size: 14px; font-weight: 650; color: var(--ink-strong); }
+.install__meta { margin: 3px 0 0; font-size: 12px; color: var(--muted); }
+.install__close { width: 30px; height: 30px; border-radius: 10px; font-size: 13px; }
+.install-list { margin: 0; padding-left: 20px; font-size: 13.5px; line-height: 1.9; color: var(--ink); }
+
 .resume__title { margin: 0; font-size: 14.5px; font-weight: 650; color: var(--ink-strong); }
 .resume__meta { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); }
 

@@ -107,6 +107,16 @@
 | + / - | 调整字号 |
 | Ctrl / ⌘ + Enter（录入页） | 直接开始抄写 |
 
+## 安装到桌面
+
+打开 https://eqmarks.github.io/inkline/ ：
+
+- **Android（Chrome / Edge）**：点页面里的「安装」，或菜单 →「添加到主屏幕 / 安装应用」
+- **iPhone / iPad**：用 Safari 打开，点「分享」→「添加到主屏幕」
+- **电脑（Chrome / Edge）**：地址栏右侧的安装图标，或页面里的「安装」
+
+装好后全屏运行、断网可用。主题、进度照常保存在本机。
+
 ## 数据与隐私
 
 所有内容只写在本机浏览器的 <code>localStorage</code>（键名 <code>inkline:v1</code>），不上传、不经过任何服务器。换设备或换浏览器不会同步；清理浏览器数据会一并清空。

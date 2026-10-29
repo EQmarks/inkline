@@ -676,6 +676,77 @@
 
   /* ---------- 绑定 ---------- */
 
+  /* ---------- 安装到桌面（PWA） ---------- */
+
+  var deferredPrompt = null;
+  var INSTALL_DISMISS_KEY = 'inkline:install-dismissed';
+
+  function isStandalone() {
+    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+  }
+
+  function isIOS() {
+    var ua = window.navigator.userAgent || '';
+    return /iphone|ipad|ipod/i.test(ua) && !window.MSStream;
+  }
+
+  function showInstallCard() {
+    if (!els.installCard || isStandalone()) return;
+    try {
+      if (localStorage.getItem(INSTALL_DISMISS_KEY) === '1') return;
+    } catch (e) {}
+    els.installCard.hidden = false;
+  }
+
+  function hideInstallCard() {
+    if (els.installCard) els.installCard.hidden = true;
+  }
+
+  function openInstallDialog() {
+    if (!els.installDialog) return;
+    if (typeof els.installDialog.showModal === 'function') els.installDialog.showModal();
+    else els.installDialog.setAttribute('open', '');
+  }
+
+  function setupInstall() {
+    if (!els.installCard) return;
+    if (isStandalone()) { hideInstallCard(); return; }
+    if (isIOS()) showInstallCard();
+
+    window.addEventListener('beforeinstallprompt', function (event) {
+      event.preventDefault();
+      deferredPrompt = event;
+      showInstallCard();
+    });
+
+    window.addEventListener('appinstalled', function () {
+      deferredPrompt = null;
+      hideInstallCard();
+      toast('已添加到桌面，下次从桌面图标打开');
+    });
+
+    els.installBtn.addEventListener('click', function () {
+      if (isIOS()) { openInstallDialog(); return; }
+      var promptEvent = deferredPrompt;
+      if (promptEvent) {
+        deferredPrompt = null;
+        promptEvent.prompt();
+        if (promptEvent.userChoice && promptEvent.userChoice.then) {
+          promptEvent.userChoice.then(function (choice) {
+            if (choice.outcome === 'accepted') hideInstallCard();
+          });
+        }
+      } else {
+        openInstallDialog();
+      }
+    });
+
+    els.installClose.addEventListener('click', function () {
+      try { localStorage.setItem(INSTALL_DISMISS_KEY, '1'); } catch (e) {}
+      hideInstallCard();
+    });
+  }
+
   function bindEditor() {
     els.source.addEventListener('input', onTextInput);
 
@@ -885,6 +956,10 @@
     els.resumeTitle = $('#resume-title');
     els.resumeMeta = $('#resume-meta');
     els.resumeBtn = $('#resume-btn');
+    els.installCard = $('#install-card');
+    els.installBtn = $('#install-btn');
+    els.installClose = $('#install-close');
+    els.installDialog = $('#install-dialog');
     els.importBtn = $('#import-btn');
     els.sampleBtn = $('#sample-btn');
     els.sampleEnBtn = $('#sample-en-btn');
@@ -936,6 +1011,7 @@
     bindReader();
     bindSettings();
     bindKeyboard();
+    setupInstall();
     registerServiceWorker();
     if (els.source) els.source.focus({ preventScroll: true });
   }
